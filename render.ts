@@ -3,7 +3,7 @@
  */
 
 import { Container, Text, Spacer } from "@mariozechner/pi-tui";
-import type { Episode, ToolDetails, ThreadInfo } from "./types.js";
+import type { Episode, ToolDetails } from "./types.js";
 
 // ─── Helpers ─────────────────────────────────────────────────────────────────
 

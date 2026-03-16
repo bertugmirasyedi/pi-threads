@@ -3,14 +3,19 @@
  */
 
 import { Type } from "@sinclair/typebox";
-import { StringEnum } from "@mariozechner/pi-ai";
 
 // ─── Shared sub-schemas ───────────────────────────────────────────────────────
 
-const AgentScopeSchema = StringEnum(["user", "project", "both"] as const, {
-  description: 'Agent discovery scope. Default: "both".',
-  default: "both",
-});
+const AgentScopeSchema = Type.Optional(
+  Type.Union(
+    [
+      Type.Literal("user"),
+      Type.Literal("project"),
+      Type.Literal("both"),
+    ],
+    { description: 'Agent discovery scope. Default: "both".' },
+  ),
+);
 
 const ParallelTask = Type.Object({
   task: Type.String({ description: "Task for this parallel slot." }),
@@ -74,7 +79,7 @@ export const ThreadParams = Type.Object({
         "Thread names whose episodes are injected into this action's context. Use to compose findings across workstreams.",
     }),
   ),
-  agentScope: Type.Optional(AgentScopeSchema),
+  agentScope: AgentScopeSchema,
 
   // ── Management ──
   list: Type.Optional(Type.Boolean({ description: "List all active threads with episode counts and age." })),

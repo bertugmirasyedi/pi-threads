@@ -8,12 +8,10 @@
 
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
-import * as os from "node:os";
 import * as path from "node:path";
 import type { Episode, ThreadEpisodeStore } from "./types.js";
 import type { Config } from "./settings.js";
 import { getFinalOutput, getPiSpawnCommand, writePromptFile, cleanupDir, getThreadDepthEnv } from "./utils.js";
-import type { Message } from "@mariozechner/pi-ai";
 
 const EPISODES_FILE = "episodes.json";
 
@@ -123,7 +121,7 @@ async function spawnEpisodeExtractor(
   prompt: string,
   config: Config,
   cwd: string,
-): Promise<Message[]> {
+): Promise<any[]> {
   let tmpDir: string | null = null;
   try {
     const systemTmp = writePromptFile("ep-system", EXTRACTION_SYSTEM_PROMPT);
@@ -143,7 +141,7 @@ async function spawnEpisodeExtractor(
       `@${taskFile}`,
     ];
 
-    const messages: Message[] = [];
+    const messages: any[] = [];
     const spawnSpec = getPiSpawnCommand(args);
 
     await new Promise<void>((resolve) => {
@@ -157,7 +155,7 @@ async function spawnEpisodeExtractor(
       const processLine = (line: string) => {
         if (!line.trim()) return;
         try {
-          const evt = JSON.parse(line) as { type?: string; message?: Message };
+          const evt = JSON.parse(line) as { type?: string; message?: any };
           if (evt.type === "message_end" && evt.message) messages.push(evt.message);
         } catch {}
       };

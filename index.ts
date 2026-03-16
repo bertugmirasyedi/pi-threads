@@ -10,7 +10,6 @@
 
 import type { ExtensionAPI } from "@mariozechner/pi-coding-agent";
 import { Text } from "@mariozechner/pi-tui";
-import type { Static } from "@sinclair/typebox";
 import { ThreadParams, ThreadStatusParams } from "./schemas.js";
 import { loadConfig } from "./settings.js";
 import { discoverAgents, findAgent } from "./agents.js";
@@ -24,7 +23,6 @@ import {
 } from "./episodes.js";
 import {
   getThreadDir,
-  getThreadsBaseDir,
   listThreads,
   cleanupExpiredThreads,
   destroyThread,
@@ -257,10 +255,17 @@ MODES:
 
         const liveResults: ThreadRunResult[] = [];
 
+        interface ParallelTaskItem {
+          task: string;
+          agent?: string;
+          name?: string;
+          model?: string;
+        }
+
         const allResults = await mapConcurrent(
-          params.tasks,
+          params.tasks as ParallelTaskItem[],
           config.maxConcurrency,
-          async (task, i) => {
+          async (task: ParallelTaskItem, i: number) => {
             const agentName = task.agent ?? params.agent ?? config.defaultAgent;
             const agent = findAgent(agents, agentName, config.defaultAgent);
             if (!agent) {
@@ -471,10 +476,11 @@ MODES:
     },
 
     renderCall(args, theme) {
-      const T = (c: string, t: string) => theme.fg(c, t);
+      // eslint-disable-next-line @typescript-eslint/no-explicit-any
+      const T = (c: string, t: string) => (theme as any).fg(c, t);
       const name = typeof args.name === "string" ? args.name : "?";
       return new Text(
-        T("toolTitle", theme.bold("thread_status ")) + T("accent", name),
+        T("toolTitle", (theme as any).bold("thread_status ")) + T("accent", name),
         0, 0,
       );
     },
@@ -490,7 +496,7 @@ MODES:
         .filter((a) => a.name.startsWith(prefix.replace(/^[^:]+:/, "")))
         .map((a) => ({ value: a.name, label: `${a.name} (${a.source})` }));
     },
-    handler: (args, ctx) => {
+    handler: async (args, ctx) => {
       const input = args.trim();
       if (!input) { ctx.ui.notify("Usage: /run <agent> <task>", "error"); return; }
       const space = input.indexOf(" ");
@@ -515,7 +521,7 @@ MODES:
   // ── /chain command ────────────────────────────────────────────────────────
   pi.registerCommand("chain", {
     description: 'Chain agents: /chain agent1 "task1" -> agent2 "task2"',
-    handler: (args, ctx) => {
+    handler: async (args, ctx) => {
       const input = args.trim();
       if (!input.includes(" -> ")) {
         ctx.ui.notify('Usage: /chain agent1 "task1" -> agent2 "task2"', "error");
@@ -541,7 +547,7 @@ MODES:
   // ── /parallel command ─────────────────────────────────────────────────────
   pi.registerCommand("parallel", {
     description: 'Run agents in parallel: /parallel agent1 "task1" -> agent2 "task2"',
-    handler: (args, ctx) => {
+    handler: async (args, ctx) => {
       const input = args.trim();
       if (!input.includes(" -> ")) {
         ctx.ui.notify('Usage: /parallel agent1 "task1" -> agent2 "task2"', "error");
@@ -568,7 +574,7 @@ MODES:
   // ── /thread command ───────────────────────────────────────────────────────
   pi.registerCommand("thread", {
     description: "Manage threads: /thread list  |  /thread episodes <name>  |  /thread destroy <name>",
-    handler: (args, ctx) => {
+    handler: async (args, ctx) => {
       const parts = args.trim().split(/\s+/);
       const action = parts[0];
       if (action === "list" || !action) {

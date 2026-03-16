@@ -6,10 +6,9 @@ import * as fs from "node:fs";
 import * as os from "node:os";
 import * as path from "node:path";
 import { createRequire } from "node:module";
-import type { Message } from "@mariozechner/pi-ai";
 import type { DisplayItem } from "./types.js";
 
-const require = createRequire(import.meta.url);
+const _require = createRequire(import.meta.url);
 
 // ─── pi spawn resolution (macOS/Linux/Windows) ────────────────────────────────
 
@@ -46,7 +45,7 @@ function resolveWindowsPiCliScript(): string | undefined {
     const root = resolvePiPackageRoot();
     const pkgPath = root
       ? path.join(root, "package.json")
-      : require.resolve("@mariozechner/pi-coding-agent/package.json");
+      : _require.resolve("@mariozechner/pi-coding-agent/package.json");
     const pkg = JSON.parse(fs.readFileSync(pkgPath, "utf-8")) as {
       bin?: string | Record<string, string>;
     };
@@ -70,7 +69,7 @@ export function getPiSpawnCommand(args: string[]): PiSpawnCommand {
 
 // ─── Message utilities ────────────────────────────────────────────────────────
 
-export function getFinalOutput(messages: Message[]): string {
+export function getFinalOutput(messages: any[]): string {
   for (let i = messages.length - 1; i >= 0; i--) {
     const msg = messages[i];
     if (msg.role === "assistant") {
@@ -82,7 +81,7 @@ export function getFinalOutput(messages: Message[]): string {
   return "";
 }
 
-export function getDisplayItems(messages: Message[]): DisplayItem[] {
+export function getDisplayItems(messages: any[]): DisplayItem[] {
   const items: DisplayItem[] = [];
   for (const msg of messages) {
     if (msg.role === "assistant") {

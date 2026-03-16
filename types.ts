@@ -2,8 +2,6 @@
  * pi-threads: TypeScript types
  */
 
-import type { Message } from "@mariozechner/pi-ai";
-
 // ─── Episode ────────────────────────────────────────────────────────────────
 
 export interface Episode {
@@ -47,7 +45,8 @@ export interface UsageStats {
 }
 
 export interface RunResult {
-  messages: Message[];
+  // eslint-disable-next-line @typescript-eslint/no-explicit-any
+  messages: any[];
   exitCode: number;
   usage: UsageStats;
   error?: string;

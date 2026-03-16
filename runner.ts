@@ -8,11 +8,9 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Message } from "@mariozechner/pi-ai";
-import type { AgentConfig, RunOptions, RunResult, ToolDetails } from "./types.js";
+import type { AgentConfig, RunOptions, RunResult } from "./types.js";
 import {
   getFinalOutput,
-  extractTextFromContent,
   getPiSpawnCommand,
   applyThinkingSuffix,
   writePromptFile,
@@ -124,6 +122,7 @@ export async function runThreadAction(
   };
 
   const startTime = Date.now();
+  void startTime; // used to compute turn duration in future
 
   try {
     const spawnSpec = getPiSpawnCommand(args);
@@ -158,7 +157,7 @@ export async function runThreadAction(
         try {
           const evt = JSON.parse(line) as {
             type?: string;
-            message?: Message;
+            message?: any;
           };
 
           if (evt.type === "message_end" && evt.message) {
