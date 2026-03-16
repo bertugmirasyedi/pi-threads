@@ -9,7 +9,7 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { Episode, ThreadEpisodeStore } from "./types.js";
+import type { Episode, ThreadEpisodeStore, FileRef } from "./types.js";
 import type { Config } from "./settings.js";
 import { getFinalOutput, getPiSpawnCommand, writePromptFile, cleanupDir, getThreadDepthEnv } from "./utils.js";
 
@@ -65,6 +65,13 @@ export function formatEpisodesForSeed(store: ThreadEpisodeStore): string {
       lines.push("**Key Findings:**");
       for (const f of ep.key_findings) lines.push(`- ${f}`);
     }
+    if (ep.file_refs && ep.file_refs.length > 0) {
+      lines.push("**Code References:**");
+      for (const ref of ep.file_refs) {
+        const loc = ref.line !== undefined ? `${ref.file}:${ref.line}` : ref.file;
+        lines.push(`- \`${loc}\` — ${ref.context}`);
+      }
+    }
     lines.push(`**Conclusions:** ${ep.conclusions}`);
     if (ep.files_read.length > 0) lines.push(`**Files Read:** ${ep.files_read.join(", ")}`);
     if (ep.files_modified.length > 0) lines.push(`**Files Modified:** ${ep.files_modified.join(", ")}`);
@@ -87,6 +94,13 @@ export function formatEpisodeAsContent(
     lines.push("");
   }
   lines.push(`**Conclusions:** ${ep.conclusions}`);
+  if (ep.file_refs && ep.file_refs.length > 0) {
+    lines.push("\n**Code References:**");
+    for (const ref of ep.file_refs) {
+      const loc = ref.line !== undefined ? `${ref.file}:${ref.line}` : ref.file;
+      lines.push(`- \`${loc}\` — ${ref.context}`);
+    }
+  }
   if (ep.files_read.length > 0) lines.push(`\n**Files Read:** ${ep.files_read.join(", ")}`);
   if (ep.files_modified.length > 0) lines.push(`**Files Modified:** ${ep.files_modified.join(", ")}`);
   return lines.join("\n");
@@ -98,22 +112,35 @@ const EXTRACTION_SYSTEM_PROMPT =
   "You are a JSON extractor. Always respond with ONLY valid JSON. No markdown, no code fences, no explanation.";
 
 function buildExtractionPrompt(task: string, rawOutput: string): string {
-  const truncatedOutput = rawOutput.slice(0, 6000);
-  return `Extract a structured episode from this agent work session.
+  const truncatedOutput = rawOutput.slice(0, 12000);
+  const wasTruncated = rawOutput.length > 12000;
+  return `Extract a complete structured episode from this agent work session.
 
 Task performed:
-${task.slice(0, 600)}
+${task.slice(0, 800)}
 
 Agent output:
-${truncatedOutput}
+${truncatedOutput}${wasTruncated ? `\n\n[Output truncated at 12000 chars — ${rawOutput.length - 12000} chars omitted]` : ""}
+
+Instructions:
+- List EVERY finding — security issues, behavior changes, bugs, convention violations, test gaps, missing items. Do NOT filter to "key" findings only.
+- For each finding that references a specific location in code, add an entry to file_refs with the file path, line number (if mentioned), and a one-line description of what matters there.
+- If the output mentions file:line references (e.g. "auth.py:81", "line 42 of query.py"), extract them into file_refs.
 
 Return ONLY this JSON object (no markdown, no code fences):
 {
   "objective": "one clear sentence describing what was accomplished",
-  "key_findings": ["specific concrete finding 1", "specific concrete finding 2"],
-  "conclusions": "2-3 sentences summarizing what was learned and its strategic implications",
+  "key_findings": [
+    "complete finding including relevant file paths and code patterns",
+    "another complete finding — include every security, behavioral, and convention issue found"
+  ],
+  "conclusions": "2-3 sentences: what was learned, biggest risks, recommended next actions",
   "files_read": ["path/to/file.ts"],
-  "files_modified": ["path/to/changed.ts"]
+  "files_modified": ["path/to/changed.ts"],
+  "file_refs": [
+    {"file": "path/to/file.ts", "line": 42, "context": "one-line description of why this location matters"},
+    {"file": "path/to/other.ts", "context": "description when no specific line is known"}
+  ]
 }`;
 }
 
@@ -193,6 +220,18 @@ function parseEpisodeJson(raw: string): Omit<Episode, "id" | "timestamp"> | null
 
   try {
     const parsed = JSON.parse(cleaned.slice(start, end + 1)) as Record<string, unknown>;
+
+    // Parse file_refs — each entry must have at least {file, context}
+    const rawRefs = Array.isArray(parsed.file_refs) ? parsed.file_refs : [];
+    const file_refs: FileRef[] = rawRefs
+      .filter((r): r is Record<string, unknown> => r !== null && typeof r === "object")
+      .map((r) => ({
+        file: String(r.file ?? ""),
+        ...(r.line !== undefined && r.line !== null ? { line: Number(r.line) } : {}),
+        context: String(r.context ?? ""),
+      }))
+      .filter((r) => r.file && r.context);
+
     return {
       objective: String(parsed.objective ?? ""),
       key_findings: Array.isArray(parsed.key_findings)
@@ -201,6 +240,7 @@ function parseEpisodeJson(raw: string): Omit<Episode, "id" | "timestamp"> | null
       conclusions: String(parsed.conclusions ?? ""),
       files_read: Array.isArray(parsed.files_read) ? parsed.files_read.map(String) : [],
       files_modified: Array.isArray(parsed.files_modified) ? parsed.files_modified.map(String) : [],
+      ...(file_refs.length > 0 ? { file_refs } : {}),
     };
   } catch {
     return null;

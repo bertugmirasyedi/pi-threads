@@ -4,6 +4,12 @@
 
 // ─── Episode ────────────────────────────────────────────────────────────────
 
+export interface FileRef {
+  file: string;
+  line?: number;
+  context: string; // why this specific location matters
+}
+
 export interface Episode {
   id: number;
   timestamp: string;
@@ -12,6 +18,7 @@ export interface Episode {
   conclusions: string;
   files_read: string[];
   files_modified: string[];
+  file_refs?: FileRef[];  // specific file:line pointers for actionable findings
 }
 
 // ─── Thread ─────────────────────────────────────────────────────────────────

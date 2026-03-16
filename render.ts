@@ -208,6 +208,15 @@ export function renderResult(
       container.addChild(new Text(ep.conclusions, 0, 0));
     }
 
+    if (ep.file_refs && ep.file_refs.length > 0) {
+      container.addChild(new Spacer(1));
+      container.addChild(new Text(T("muted", "── Code References ──"), 0, 0));
+      for (const ref of ep.file_refs) {
+        const loc = ref.line !== undefined ? `${ref.file}:${ref.line}` : ref.file;
+        container.addChild(new Text(T("accent", loc) + T("dim", ` — ${ref.context}`), 0, 0));
+      }
+    }
+
     if (ep.files_read.length > 0 || ep.files_modified.length > 0) {
       container.addChild(new Spacer(1));
       if (ep.files_read.length > 0)
