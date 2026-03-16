@@ -42,10 +42,11 @@ export async function runThreadAction(
     } catch {}
     // Resume the existing session file if one exists; otherwise create a new
     // session in the thread dir. This is the key to thread persistence:
-    // --session <file> resumes a specific session, --session-dir creates new.
+    // --continue --session <file> resumes AND appends to the same file.
+    // --session-dir creates a new file in the thread dir on first use.
     const existingSession = findLatestSessionFile(sessionDir);
     if (existingSession) {
-      args.push("--session", existingSession);
+      args.push("--continue", "--session", existingSession);
     } else {
       args.push("--session-dir", sessionDir);
     }
