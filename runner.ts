@@ -16,6 +16,7 @@ import {
   writePromptFile,
   cleanupDir,
   getThreadDepthEnv,
+  findLatestSessionFile,
 } from "./utils.js";
 
 const TASK_ARG_LIMIT = 8000;
@@ -39,7 +40,15 @@ export async function runThreadAction(
     try {
       fs.mkdirSync(sessionDir, { recursive: true });
     } catch {}
-    args.push("--session-dir", sessionDir);
+    // Resume the existing session file if one exists; otherwise create a new
+    // session in the thread dir. This is the key to thread persistence:
+    // --session <file> resumes a specific session, --session-dir creates new.
+    const existingSession = findLatestSessionFile(sessionDir);
+    if (existingSession) {
+      args.push("--session", existingSession);
+    } else {
+      args.push("--session-dir", sessionDir);
+    }
   }
 
   // Model: override > agent config (with thinking suffix)
