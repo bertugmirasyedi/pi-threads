@@ -1,0 +1,118 @@
+/**
+ * pi-threads: TypeScript types
+ */
+
+import type { Message } from "@mariozechner/pi-ai";
+
+// ─── Episode ────────────────────────────────────────────────────────────────
+
+export interface Episode {
+  id: number;
+  timestamp: string;
+  objective: string;
+  key_findings: string[];
+  conclusions: string;
+  files_read: string[];
+  files_modified: string[];
+}
+
+// ─── Thread ─────────────────────────────────────────────────────────────────
+
+export interface ThreadEpisodeStore {
+  threadName: string;
+  agentName?: string;
+  created: string;
+  lastActivity: string;
+  episodes: Episode[];
+}
+
+export interface ThreadInfo {
+  name: string;
+  agentName?: string;
+  created: string;
+  lastActivity: string;
+  episodeCount: number;
+  sessionDir: string;
+}
+
+// ─── Execution ───────────────────────────────────────────────────────────────
+
+export interface UsageStats {
+  input: number;
+  output: number;
+  cacheRead: number;
+  cacheWrite: number;
+  cost: number;
+  turns: number;
+}
+
+export interface RunResult {
+  messages: Message[];
+  exitCode: number;
+  usage: UsageStats;
+  error?: string;
+  model?: string;
+}
+
+export interface ThreadRunResult {
+  threadName?: string;          // undefined = ephemeral
+  episode: Episode;
+  runResult: RunResult;
+  seededFrom?: string[];
+}
+
+// ─── Tool Details (for TUI rendering) ───────────────────────────────────────
+
+export type ToolMode =
+  | "thread"      // named persistent action
+  | "ephemeral"   // one-shot
+  | "parallel"    // concurrent tasks
+  | "chain"       // sequential steps
+  | "list"        // management: list threads
+  | "episodes"    // management: show episodes for a thread
+  | "destroy";    // management: destroy a thread
+
+export interface ToolDetails {
+  mode: ToolMode;
+  results?: ThreadRunResult[];      // execution modes
+  threads?: ThreadInfo[];           // list mode
+  threadEpisodes?: Episode[];       // episodes mode
+  destroyedThread?: string;         // destroy mode
+}
+
+// ─── Agents ──────────────────────────────────────────────────────────────────
+
+export type AgentScope = "user" | "project" | "builtin" | "both";
+
+export interface AgentConfig {
+  name: string;
+  description?: string;
+  source: "user" | "project" | "builtin";
+  systemPrompt: string;
+  tools?: string[];
+  model?: string;
+  thinking?: string;
+  skills?: string[];
+  extensions?: string[];
+}
+
+// ─── Runner ──────────────────────────────────────────────────────────────────
+
+export interface RunOptions {
+  cwd?: string;
+  signal?: AbortSignal;
+  sessionDir?: string;       // if set, creates/resumes session there; no --no-session
+  ephemeral?: boolean;       // if true, use --no-session (ignore sessionDir for persistence)
+  seedFile?: string;         // path to temp file with episode seed content for --append-system-prompt
+  modelOverride?: string;
+  onUpdate?: (partial: { content: Array<{ type: "text"; text: string }>; details: ToolDetails }) => void;
+}
+
+// ─── Display ─────────────────────────────────────────────────────────────────
+
+export interface DisplayItem {
+  type: "text" | "tool";
+  text?: string;
+  name?: string;
+  args?: Record<string, unknown>;
+}

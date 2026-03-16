@@ -1,0 +1,217 @@
+{
+  "goal": "Implement pi-threads: a pi extension that replaces pi-subagents with Slate-style thread/episode architecture",
+  "features": [
+    {
+      "id": 1,
+      "category": "core",
+      "description": "Named persistent thread action returns a structured JSON episode (not raw output)",
+      "priority": "high",
+      "steps": [
+        "Call thread({ name: 'test', task: 'list files in cwd' })",
+        "Verify tool result content contains formatted episode (objective, key_findings, conclusions)",
+        "Verify episodes.json is written to thread dir"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 2,
+      "category": "core",
+      "description": "Named thread resumes prior session context across multiple actions",
+      "priority": "high",
+      "steps": [
+        "Call thread({ name: 'ctx-test', task: 'remember the number 42' })",
+        "Call thread({ name: 'ctx-test', task: 'what number did I ask you to remember?' })",
+        "Verify second response references 42 (proving session was resumed)"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 3,
+      "category": "core",
+      "description": "Ephemeral one-shot thread (no name) returns episode, no persistence",
+      "priority": "high",
+      "steps": [
+        "Call thread({ task: 'say hello', agent: 'scout' })",
+        "Verify episode is returned in content",
+        "Verify NO thread dir is created in threads/"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 4,
+      "category": "core",
+      "description": "Episode extraction uses configurable cheap model",
+      "priority": "high",
+      "steps": [
+        "Run any thread action",
+        "Verify episode extraction spawns subprocess with --models <episodeModel>",
+        "Verify episode JSON has all required fields: objective, key_findings, conclusions, files_read, files_modified"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 5,
+      "category": "core",
+      "description": "Cross-thread episode seeding via seed_from",
+      "priority": "high",
+      "steps": [
+        "Create thread 'source' with one action",
+        "Call thread({ name: 'consumer', task: '...', seed_from: ['source'] })",
+        "Verify consumer thread's system prompt contains source thread's episodes"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 6,
+      "category": "modes",
+      "description": "Chain mode: each step gets prior step's episode as {previous}",
+      "priority": "high",
+      "steps": [
+        "Call thread({ chain: [{ agent: 'scout', task: 'list root files' }, { agent: 'planner', task: 'Based on: {previous}, suggest improvements' }] })",
+        "Verify second step task has episode content substituted for {previous}",
+        "Verify final result contains all step episodes"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 7,
+      "category": "modes",
+      "description": "Parallel mode: multiple agents run concurrently, all episodes returned",
+      "priority": "high",
+      "steps": [
+        "Call thread({ tasks: [{ task: 'list root files', agent: 'scout' }, { task: 'check git status', agent: 'scout' }] })",
+        "Verify both tasks run concurrently",
+        "Verify both episodes are in the result"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 8,
+      "category": "management",
+      "description": "thread({ list: true }) shows all active threads",
+      "priority": "high",
+      "steps": [
+        "Create 2 named threads with actions",
+        "Call thread({ list: true })",
+        "Verify both threads appear with name, agent, episode count, last activity"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 9,
+      "category": "management",
+      "description": "thread({ episodes: 'thread-name' }) returns full episode history",
+      "priority": "high",
+      "steps": [
+        "Run 2 actions on a named thread",
+        "Call thread({ episodes: 'thread-name' })",
+        "Verify both episodes are returned in full"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 10,
+      "category": "management",
+      "description": "thread({ destroy: 'thread-name' }) removes thread and its data",
+      "priority": "high",
+      "steps": [
+        "Create a named thread",
+        "Call thread({ destroy: 'thread-name' })",
+        "Verify thread dir is deleted",
+        "Verify thread no longer appears in list"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 11,
+      "category": "lifecycle",
+      "description": "Threads older than 7 days are auto-cleaned on session_start",
+      "priority": "medium",
+      "steps": [
+        "Manually create a thread dir with lastActivity timestamp 8 days ago",
+        "Reload extension (session_start fires)",
+        "Verify old thread dir is deleted"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 12,
+      "category": "agents",
+      "description": "Agent discovery: user agents (~/.pi/agent/agents/*.md) take priority over builtins",
+      "priority": "medium",
+      "steps": [
+        "Create a user agent with same name as builtin (e.g. scout)",
+        "Run thread({ agent: 'scout', task: '...' })",
+        "Verify user agent's system prompt is used, not builtin"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 13,
+      "category": "commands",
+      "description": "/run <agent> <task> command works",
+      "priority": "medium",
+      "steps": [
+        "Type /run scout list files in cwd",
+        "Verify thread tool is called with { task: '...', agent: 'scout' }",
+        "Verify result appears in conversation"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 14,
+      "category": "commands",
+      "description": "/chain and /parallel commands work",
+      "priority": "medium",
+      "steps": [
+        "Type /chain scout 'find files' -> planner 'analyze'",
+        "Verify chain tool call is made",
+        "Type /parallel scout 'task1' -> scout 'task2'",
+        "Verify parallel tool call is made"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 15,
+      "category": "ui",
+      "description": "TUI rendering: collapsed view shows episode summary, expanded shows full detail",
+      "priority": "medium",
+      "steps": [
+        "Run a thread action",
+        "Verify collapsed view shows thread name, objective, key findings count",
+        "Press Ctrl+O to expand",
+        "Verify expanded view shows full episode with all fields"
+      ],
+      "passes": false,
+      "notes": ""
+    },
+    {
+      "id": 16,
+      "category": "ui",
+      "description": "Fallback episode: if extraction fails, graceful fallback with raw output summary",
+      "priority": "low",
+      "steps": [
+        "Configure invalid episode model in config.json",
+        "Run a thread action",
+        "Verify tool still returns a result (fallback episode with conclusions = truncated raw output)",
+        "Verify no crash"
+      ],
+      "passes": false,
+      "notes": ""
+    }
+  ]
+}
