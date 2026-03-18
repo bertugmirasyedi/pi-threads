@@ -149,8 +149,9 @@ export async function runThreadAction(
       let stderrBuf = "";
       let lastUpdateMs = 0;
       const UPDATE_THROTTLE = 60;
-      const TAIL_LINES = 10;
+      const TAIL_LINES = 16;
       const tailLines: string[] = [];
+      let currentTool = "";
 
       const appendToTail = (text: string) => {
         const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -165,7 +166,13 @@ export async function runThreadAction(
           lastUpdateMs = now;
           onUpdate({
             content: [{ type: "text", text: getFinalOutput(result.messages) || "(running…)" }],
-            details: { mode: "thread" as const, results: [], running: true, outputTail: [...tailLines] },
+            details: {
+              mode: "thread" as const,
+              results: [],
+              running: true,
+              outputTail: [...tailLines],
+              currentTool,
+            } as any,
           });
         }
       };
@@ -176,7 +183,27 @@ export async function runThreadAction(
           const evt = JSON.parse(line) as {
             type?: string;
             message?: any;
+            name?: string;
+            tool?: string;
+            toolCallId?: string;
           };
+
+          // Track tool calls as they start — gives live activity feedback
+          if (evt.type === "tool_execution_start" || evt.type === "tool_call") {
+            const toolName = (evt as any).toolName ?? evt.name ?? (evt as any).tool ?? "tool";
+            currentTool = toolName;
+            appendToTail(`→ ${toolName}`);
+            scheduleUpdate();
+          }
+
+          // Track tool results for richer context
+          if (evt.type === "tool_result_end" || evt.type === "tool_execution_end") {
+            if (evt.message) {
+              result.messages.push(evt.message);
+            }
+            currentTool = "";
+            scheduleUpdate();
+          }
 
           if (evt.type === "message_end" && evt.message) {
             result.messages.push(evt.message);
@@ -192,17 +219,28 @@ export async function runThreadAction(
               }
               if (!result.model && evt.message.model) result.model = evt.message.model;
               if (evt.message.errorMessage) result.error = evt.message.errorMessage;
-              // Capture text content for the live tail
+              // Capture tool call names from assistant content for activity log
               for (const part of evt.message.content ?? []) {
-                if (part?.type === "text" && part.text) appendToTail(part.text);
+                if (part?.type === "text" && part.text) {
+                  appendToTail(part.text);
+                } else if (part?.type === "toolCall" || part?.type === "tool_use") {
+                  const name = part.name ?? "tool";
+                  const args = part.arguments ?? part.input ?? {};
+                  // Build a concise activity line from tool name + key arg
+                  let detail = "";
+                  if (name === "read" && args.path) detail = ` ${args.path}`;
+                  else if (name === "bash" && args.command) detail = ` ${String(args.command).slice(0, 60)}`;
+                  else if (name === "edit" && args.path) detail = ` ${args.path}`;
+                  else if (name === "write" && args.path) detail = ` ${args.path}`;
+                  else if (name === "grep" && args.pattern) detail = ` "${args.pattern}"`;
+                  else if (name === "find" && args.pattern) detail = ` ${args.pattern}`;
+                  else if (name === "lsp" && args.action) detail = ` ${args.action}${args.file ? " " + args.file : ""}`;
+                  else if (name === "thread" && args.name) detail = ` ${args.name}`;
+                  appendToTail(`→ ${name}${detail}`);
+                }
               }
               scheduleUpdate();
             }
-          }
-
-          if (evt.type === "tool_result_end" && evt.message) {
-            result.messages.push(evt.message);
-            scheduleUpdate();
           }
         } catch {}
       };

@@ -153,20 +153,37 @@ export function renderResult(
   // ── Execution modes ───────────────────────────────────────────────────────
   const results = details.results ?? [];
 
-  // Running state: show spinner + live output tail
+  // Running state: show activity feed with tool calls
   if (details.running) {
     const tail = details.outputTail ?? [];
-    if (tail.length === 0) {
-      return new Text(T("accent", "⟳") + " " + T("muted", "running…"), 0, 0);
+    const currentTool = (details as any).currentTool ?? "";
+    const lines: string[] = [];
+
+    // Header with spinner and active tool
+    if (currentTool) {
+      lines.push(`${T("accent", "⟳")} ${T("toolTitle", theme.bold(currentTool))} ${T("dim", "running…")}`);
+    } else {
+      lines.push(`${T("accent", "⟳")} ${T("muted", "running…")}`);
     }
-    const MAX_LINE = 100;
-    const lines = [`${T("accent", "⟳")} ${T("muted", "running")}`];
-    for (let i = 0; i < tail.length; i++) {
-      const raw = tail[i];
-      const display = raw.length > MAX_LINE ? raw.slice(0, MAX_LINE - 1) + "…" : raw;
-      const prefix = i === tail.length - 1 ? "  └ " : "  │ ";
-      lines.push(T("dim", `${prefix}${display}`));
+
+    // Activity feed — show last N lines of tool activity
+    if (tail.length > 0) {
+      lines.push(T("dim", "  ──────────────────────────────────────────"));
+      const MAX_LINE = 120;
+      const maxShow = Math.min(tail.length, 12);
+      const startIdx = Math.max(0, tail.length - maxShow);
+      for (let i = startIdx; i < tail.length; i++) {
+        const raw = tail[i];
+        const isToolCall = raw.startsWith("→ ");
+        const display = raw.length > MAX_LINE ? raw.slice(0, MAX_LINE - 1) + "…" : raw;
+        if (isToolCall) {
+          lines.push(`  ${T("accent", display)}`);
+        } else {
+          lines.push(`  ${T("dim", display)}`);
+        }
+      }
     }
+
     return new Text(lines.join("\n"), 0, 0);
   }
 

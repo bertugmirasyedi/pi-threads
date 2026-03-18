@@ -163,12 +163,13 @@ async function spawnEpisodeExtractor(
       "--no-tools",
       "--no-extensions",
       "--no-skills",
-      "--models", config.episodeModel,
+      ...(config.episodeModel ? ["--models", config.episodeModel] : []),
       "--append-system-prompt", systemTmp.filePath,
       `@${taskFile}`,
     ];
 
     const messages: any[] = [];
+    let stderrBuf = "";
     const spawnSpec = getPiSpawnCommand(args);
 
     await new Promise<void>((resolve) => {
@@ -193,11 +194,21 @@ async function spawnEpisodeExtractor(
         buf = lines.pop() ?? "";
         lines.forEach(processLine);
       });
-      proc.on("close", () => {
+      proc.stderr.on("data", (d: Buffer) => {
+        stderrBuf += d.toString();
+      });
+      proc.on("close", (code) => {
         if (buf.trim()) processLine(buf);
+        if (code !== 0 && stderrBuf) {
+          // Log extraction failure for debugging
+          process.stderr.write(`[pi-threads] Episode extraction failed (exit ${code}): ${stderrBuf.slice(0, 300)}\n`);
+        }
         resolve();
       });
-      proc.on("error", () => resolve());
+      proc.on("error", (err) => {
+        process.stderr.write(`[pi-threads] Episode extraction spawn error: ${err.message}\n`);
+        resolve();
+      });
     });
 
     return messages;

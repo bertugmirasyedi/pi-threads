@@ -20,7 +20,7 @@ export interface Config {
 }
 
 export const DEFAULT_CONFIG: Config = {
-  episodeModel: "anthropic/claude-haiku-4-5",
+  episodeModel: "",
   threadTTLDays: 7,
   defaultAgent: "worker",
   maxParallel: 8,

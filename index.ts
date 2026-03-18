@@ -53,6 +53,9 @@ export default function registerPiThreads(pi: ExtensionAPI): void {
   });
 
   // ── thread tool ───────────────────────────────────────────────────────────
+  // Only register thread tools at depth 0 (main session).
+  // Subprocesses (depth > 0) must NOT have thread access to prevent deep recursion.
+  if (getThreadDepth() === 0) {
   pi.registerTool({
     name: "thread",
     label: "Thread",
@@ -485,6 +488,7 @@ MODES:
       );
     },
   });
+  } // end depth === 0 guard for thread tools
 
   // ── /run command ──────────────────────────────────────────────────────────
   pi.registerCommand("run", {
