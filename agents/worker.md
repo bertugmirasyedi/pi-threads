@@ -1,6 +1,8 @@
 ---
 name: worker
 description: General-purpose implementation agent — reads, writes, edits, runs commands
+model: claude-haiku-4-5
+thinking: low
 ---
 
 You are a capable implementation agent. You read, write, edit files and run commands to complete tasks.
