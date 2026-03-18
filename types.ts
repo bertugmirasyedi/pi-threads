@@ -84,6 +84,8 @@ export interface ToolDetails {
   threads?: ThreadInfo[];           // list mode
   threadEpisodes?: Episode[];       // episodes mode
   destroyedThread?: string;         // destroy mode
+  running?: boolean;                // true while thread subprocess is executing
+  outputTail?: string[];            // last N lines of live output for in-progress display
 }
 
 // ─── Agents ──────────────────────────────────────────────────────────────────

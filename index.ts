@@ -382,7 +382,7 @@ MODES:
           seedFile: seedFileResult?.filePath,
           modelOverride: params.model,
           onUpdate: onUpdate
-            ? (p) => onUpdate({ ...p, details: { mode: isNamed ? "thread" : "ephemeral" } as ToolDetails })
+            ? (p) => onUpdate({ ...p, details: { ...p.details, mode: isNamed ? "thread" : "ephemeral" } as ToolDetails })
             : undefined,
         });
 

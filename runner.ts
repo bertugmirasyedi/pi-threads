@@ -149,6 +149,14 @@ export async function runThreadAction(
       let stderrBuf = "";
       let lastUpdateMs = 0;
       const UPDATE_THROTTLE = 60;
+      const TAIL_LINES = 10;
+      const tailLines: string[] = [];
+
+      const appendToTail = (text: string) => {
+        const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
+        tailLines.push(...lines);
+        if (tailLines.length > TAIL_LINES) tailLines.splice(0, tailLines.length - TAIL_LINES);
+      };
 
       const scheduleUpdate = () => {
         if (!onUpdate) return;
@@ -157,7 +165,7 @@ export async function runThreadAction(
           lastUpdateMs = now;
           onUpdate({
             content: [{ type: "text", text: getFinalOutput(result.messages) || "(running…)" }],
-            details: { mode: "thread" as const, results: [] },
+            details: { mode: "thread" as const, results: [], running: true, outputTail: [...tailLines] },
           });
         }
       };
@@ -184,6 +192,10 @@ export async function runThreadAction(
               }
               if (!result.model && evt.message.model) result.model = evt.message.model;
               if (evt.message.errorMessage) result.error = evt.message.errorMessage;
+              // Capture text content for the live tail
+              for (const part of evt.message.content ?? []) {
+                if (part?.type === "text" && part.text) appendToTail(part.text);
+              }
               scheduleUpdate();
             }
           }
