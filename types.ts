@@ -72,7 +72,6 @@ export interface ThreadRunResult {
 export type ToolMode =
   | "thread"      // named persistent action
   | "ephemeral"   // one-shot
-  | "parallel"    // concurrent tasks
   | "chain"       // sequential steps
   | "list"        // management: list threads
   | "episodes"    // management: show episodes for a thread

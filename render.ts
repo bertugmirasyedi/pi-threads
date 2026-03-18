@@ -59,13 +59,6 @@ export function renderCall(
     );
   }
 
-  if (Array.isArray(args.tasks)) {
-    return new Text(
-      T("toolTitle", theme.bold("thread ")) + T("accent", `parallel (${(args.tasks as unknown[]).length})`),
-      0, 0,
-    );
-  }
-
   if (Array.isArray(args.chain)) {
     return new Text(
       T("toolTitle", theme.bold("thread ")) + T("accent", `chain (${(args.chain as unknown[]).length} steps)`),
@@ -191,19 +184,6 @@ export function renderResult(
     return new Text(T("muted", "(running…)"), 0, 0);
   }
 
-  const renderEpisode = (ep: Episode, expanded: boolean): string => {
-    const lines = [`${T("success", "✓ ")}${T("accent", ep.objective)}`];
-    if (expanded) {
-      for (const f of ep.key_findings) lines.push(T("dim", `  • ${f}`));
-      if (ep.conclusions) lines.push(`  ${ep.conclusions.slice(0, 200)}`);
-      if (ep.files_read.length > 0)
-        lines.push(T("muted", `  read: ${ep.files_read.slice(0, 3).join(", ")}${ep.files_read.length > 3 ? "…" : ""}`));
-      if (ep.files_modified.length > 0)
-        lines.push(T("warning", `  modified: ${ep.files_modified.slice(0, 3).join(", ")}${ep.files_modified.length > 3 ? "…" : ""}`));
-    }
-    return lines.join("\n");
-  };
-
   if (results.length === 1) {
     const r = results[0];
     const isError = r.runResult.exitCode !== 0;
@@ -213,9 +193,7 @@ export function renderResult(
     const usage = formatUsage(r.runResult.usage);
 
     if (!options.expanded) {
-      let text = `${icon}${threadLabel} — ${T("accent", ep.objective)}`;
-      if (ep.key_findings.length > 0)
-        text += `\n  ${T("dim", ep.key_findings.slice(0, 2).join(" · "))}`;
+      let text = `${icon}${threadLabel}`;
       if (isError && r.runResult.error)
         text += `\n  ${T("error", r.runResult.error.slice(0, 100))}`;
       if (usage) text += `\n  ${T("dim", usage)}`;
@@ -227,38 +205,8 @@ export function renderResult(
       new Text(`${icon}${theme.bold(r.threadName ?? "ephemeral")} ${T("dim", `[ep ${ep.id}]`)}`, 0, 0),
     );
     container.addChild(new Spacer(1));
-    container.addChild(new Text(T("muted", "── Objective ──"), 0, 0));
-    container.addChild(new Text(ep.objective, 0, 0));
-
-    if (ep.key_findings.length > 0) {
-      container.addChild(new Spacer(1));
-      container.addChild(new Text(T("muted", "── Key Findings ──"), 0, 0));
-      for (const f of ep.key_findings)
-        container.addChild(new Text(T("dim", `• ${f}`), 0, 0));
-    }
-
-    if (ep.conclusions) {
-      container.addChild(new Spacer(1));
-      container.addChild(new Text(T("muted", "── Conclusions ──"), 0, 0));
-      container.addChild(new Text(ep.conclusions, 0, 0));
-    }
-
-    if (ep.file_refs && ep.file_refs.length > 0) {
-      container.addChild(new Spacer(1));
-      container.addChild(new Text(T("muted", "── Code References ──"), 0, 0));
-      for (const ref of ep.file_refs) {
-        const loc = ref.line !== undefined ? `${ref.file}:${ref.line}` : ref.file;
-        container.addChild(new Text(T("accent", loc) + T("dim", ` — ${ref.context}`), 0, 0));
-      }
-    }
-
-    if (ep.files_read.length > 0 || ep.files_modified.length > 0) {
-      container.addChild(new Spacer(1));
-      if (ep.files_read.length > 0)
-        container.addChild(new Text(T("muted", `read: ${ep.files_read.join(", ")}`), 0, 0));
-      if (ep.files_modified.length > 0)
-        container.addChild(new Text(T("warning", `modified: ${ep.files_modified.join(", ")}`), 0, 0));
-    }
+    container.addChild(new Text(T("muted", "── Output ──"), 0, 0));
+    container.addChild(new Text(ep.conclusions, 0, 0));
 
     if (usage) {
       container.addChild(new Spacer(1));
@@ -267,16 +215,15 @@ export function renderResult(
     return container;
   }
 
-  // Multiple results (parallel / chain)
-  const isChain = details.mode === "chain";
-  const label = isChain ? "chain" : "parallel";
+  // Multiple results (chain)
+  const label = "chain";
   const icon = T("success", "✓ ");
 
   if (!options.expanded) {
     let text = `${icon}${T("toolTitle", theme.bold(label))} ${T("accent", `${results.length} episode(s)`)}`;
     for (const r of results.slice(0, 3)) {
       const threadLabel = r.threadName ?? "step";
-      text += `\n  ${T("accent", threadLabel)}: ${T("dim", r.episode.objective.slice(0, 60))}`;
+      text += `\n  ${T("accent", threadLabel)}`;
     }
     if (results.length > 3) text += `\n  ${T("muted", `… +${results.length - 3} more`)}`;
     return new Text(text, 0, 0);
@@ -289,12 +236,12 @@ export function renderResult(
   for (let i = 0; i < results.length; i++) {
     const r = results[i];
     container.addChild(new Spacer(1));
-    const stepLabel = isChain ? `Step ${i + 1}` : `Task ${i + 1}`;
+    const stepLabel = `Step ${i + 1}`;
     const threadLabel = r.threadName ?? "ephemeral";
     container.addChild(
       new Text(T("muted", `── ${stepLabel}: `) + T("accent", threadLabel), 0, 0),
     );
-    container.addChild(new Text(renderEpisode(r.episode, true), 0, 0));
+    container.addChild(new Text(r.episode.conclusions, 0, 0));
   }
   return container;
 }

@@ -17,13 +17,6 @@ const AgentScopeSchema = Type.Optional(
   ),
 );
 
-const ParallelTask = Type.Object({
-  task: Type.String({ description: "Task for this parallel slot." }),
-  agent: Type.Optional(Type.String({ description: "Agent to use for this slot." })),
-  name: Type.Optional(Type.String({ description: "If set, this slot uses a persistent named thread." })),
-  model: Type.Optional(Type.String({ description: "Model override for this slot." })),
-});
-
 const ChainStep = Type.Object({
   agent: Type.Optional(Type.String({ description: "Agent for this step. Uses defaultAgent if omitted." })),
   task: Type.Optional(
@@ -44,13 +37,6 @@ export const ThreadParams = Type.Object({
     Type.String({
       description:
         "Task to execute. Combine with 'name' for a persistent thread. Without 'name', creates an ephemeral one-shot.",
-    }),
-  ),
-
-  // ── Execution: parallel ──
-  tasks: Type.Optional(
-    Type.Array(ParallelTask, {
-      description: "Array of tasks to run concurrently. Each returns an episode.",
     }),
   ),
 

@@ -2,9 +2,9 @@
  * pi-threads: Extension entry point
  *
  * Registers:
- *   - `thread` tool  — named persistent threads + ephemeral + chain + parallel
+ *   - `thread` tool  — named persistent threads + ephemeral + chain
  *   - `thread_status` tool — inspect a thread's episodes
- *   - /run, /chain, /parallel, /thread commands
+ *   - /run, /chain, /thread commands
  *   - session_start → TTL cleanup
  */
 
@@ -15,7 +15,6 @@ import { loadConfig } from "./settings.js";
 import { discoverAgents, findAgent } from "./agents.js";
 import { runThreadAction, buildSeedFileContent, writeSeedFile } from "./runner.js";
 import {
-  extractEpisode,
   appendEpisode,
   readEpisodeStore,
   formatEpisodesForSeed,
@@ -67,7 +66,6 @@ MODES:
   - Returns episode: compressed findings + conclusions
   - Seed with other threads: { seed_from: ["other-thread"] }
 • Ephemeral: { task: "...", agent: "scout" } — one-shot, no memory
-• Parallel: { tasks: [{ task: "...", agent: "scout" }, ...] }
 • Chain: { chain: [{ agent: "scout", task: "..." }, { agent: "planner" }] }
 • Management: { list: true } | { episodes: "name" } | { destroy: "name" }`,
 
@@ -203,13 +201,16 @@ MODES:
 
           const store = stepThreadName ? readEpisodeStore(stepSessionDir!) : null;
           const nextId = (store?.episodes.length ?? 0) + 1;
-          const episode = await extractEpisode(
-            resolvedTask,
-            getFinalOutput(runResult.messages),
-            nextId,
-            config,
-            runtimeCwd,
-          );
+          const rawOutput = getFinalOutput(runResult.messages);
+          const episode: Episode = {
+            id: nextId,
+            timestamp: new Date().toISOString(),
+            objective: resolvedTask.slice(0, 200),
+            key_findings: [],
+            conclusions: rawOutput,
+            files_read: [],
+            files_modified: [],
+          };
 
           if (stepThreadName) {
             appendEpisode(stepSessionDir!, stepThreadName, agent.name, episode);
@@ -222,7 +223,7 @@ MODES:
             seededFrom: [],
           };
           chainResults.push(stepResult);
-          previousEpisodeText = formatEpisodeAsContent(episode);
+          previousEpisodeText = rawOutput;
 
           if (runResult.exitCode !== 0) {
             return {
@@ -239,92 +240,10 @@ MODES:
         }
 
         const finalEp = chainResults[chainResults.length - 1].episode;
-        const summary = formatEpisodeAsContent(finalEp, chainResults[chainResults.length - 1].threadName);
+        const summary = finalEp.conclusions;
         return {
           content: [{ type: "text", text: summary }],
           details: { mode: "chain", results: chainResults } as ToolDetails,
-        };
-      }
-
-      // ── Execution: parallel ─────────────────────────────────────────────
-      if (params.tasks && params.tasks.length > 0) {
-        if (params.tasks.length > config.maxParallel) {
-          return {
-            content: [{ type: "text", text: `Parallel limit: max ${config.maxParallel} tasks.` }],
-            isError: true,
-            details: { mode: "parallel" } as ToolDetails,
-          };
-        }
-
-        const liveResults: ThreadRunResult[] = [];
-
-        interface ParallelTaskItem {
-          task: string;
-          agent?: string;
-          name?: string;
-          model?: string;
-        }
-
-        const allResults = await mapConcurrent(
-          params.tasks as ParallelTaskItem[],
-          config.maxConcurrency,
-          async (task: ParallelTaskItem, i: number) => {
-            const agentName = task.agent ?? params.agent ?? config.defaultAgent;
-            const agent = findAgent(agents, agentName, config.defaultAgent);
-            if (!agent) {
-              const fallbackEp: Episode = {
-                id: 1,
-                timestamp: new Date().toISOString(),
-                objective: `Unknown agent: ${agentName}`,
-                key_findings: [],
-                conclusions: `Agent "${agentName}" not found.`,
-                files_read: [],
-                files_modified: [],
-              };
-              return { threadName: task.name, episode: fallbackEp, runResult: { messages: [], exitCode: 1, usage: { input: 0, output: 0, cacheRead: 0, cacheWrite: 0, cost: 0, turns: 0 }, error: `Unknown agent: ${agentName}` }, seededFrom: [] } as ThreadRunResult;
-            }
-
-            const taskSessionDir = task.name
-              ? getThreadDir(parentSessionFile, task.name)
-              : undefined;
-
-            const runResult = await runThreadAction(runtimeCwd, agent, task.task, {
-              cwd: runtimeCwd,
-              signal,
-              sessionDir: taskSessionDir,
-              ephemeral: !task.name,
-              modelOverride: task.model ?? params.model,
-              onUpdate: onUpdate
-                ? (p) => {
-                    onUpdate({ ...p, details: { mode: "parallel", results: [...liveResults] } as ToolDetails });
-                  }
-                : undefined,
-            });
-
-            const store = task.name ? readEpisodeStore(taskSessionDir!) : null;
-            const nextId = (store?.episodes.length ?? 0) + 1;
-            const episode = await extractEpisode(
-              task.task,
-              getFinalOutput(runResult.messages),
-              nextId,
-              config,
-              runtimeCwd,
-            );
-
-            if (task.name) appendEpisode(taskSessionDir!, task.name, agent.name, episode);
-
-            const r: ThreadRunResult = { threadName: task.name, episode, runResult, seededFrom: [] };
-            liveResults[i] = r;
-            return r;
-          },
-        );
-
-        const summaries = allResults
-          .map((r, i) => `Task ${i + 1} (${r.threadName ?? "ephemeral"}): ${r.episode.objective}`)
-          .join("\n");
-        return {
-          content: [{ type: "text", text: summaries }],
-          details: { mode: "parallel", results: allResults } as ToolDetails,
         };
       }
 
@@ -334,7 +253,7 @@ MODES:
           content: [
             {
               type: "text",
-              text: "Provide one of: task (single/thread), tasks (parallel), chain, list, episodes, destroy.",
+              text: "Provide one of: task (single/thread), chain, list, episodes, destroy.",
             },
           ],
           isError: true,
@@ -392,13 +311,16 @@ MODES:
         // Extract episode
         const store = isNamed ? readEpisodeStore(threadSessionDir!) : null;
         const nextId = (store?.episodes.length ?? 0) + 1;
-        const episode = await extractEpisode(
-          params.task,
-          getFinalOutput(runResult.messages),
-          nextId,
-          config,
-          runtimeCwd,
-        );
+        const rawOutput = getFinalOutput(runResult.messages);
+        const episode: Episode = {
+          id: nextId,
+          timestamp: new Date().toISOString(),
+          objective: params.task.slice(0, 200),
+          key_findings: [],
+          conclusions: rawOutput,
+          files_read: [],
+          files_modified: [],
+        };
 
         if (isNamed) {
           appendEpisode(threadSessionDir!, params.name!, agent.name, episode);
@@ -411,10 +333,8 @@ MODES:
           seededFrom,
         };
 
-        const formatted = formatEpisodeAsContent(episode, params.name);
-
         return {
-          content: [{ type: "text", text: formatted }],
+          content: [{ type: "text", text: rawOutput }],
           details: {
             mode: isNamed ? "thread" : "ephemeral",
             results: [r],
@@ -544,33 +464,6 @@ MODES:
       if (chain.length === 0) return;
       pi.sendUserMessage(
         `Call the thread tool with these exact parameters: ${JSON.stringify({ chain, agentScope: "both" })}`,
-      );
-    },
-  });
-
-  // ── /parallel command ─────────────────────────────────────────────────────
-  pi.registerCommand("parallel", {
-    description: 'Run agents in parallel: /parallel agent1 "task1" -> agent2 "task2"',
-    handler: async (args, ctx) => {
-      const input = args.trim();
-      if (!input.includes(" -> ")) {
-        ctx.ui.notify('Usage: /parallel agent1 "task1" -> agent2 "task2"', "error");
-        return;
-      }
-      const segments = input.split(" -> ").map((s) => s.trim()).filter(Boolean);
-      const tasks: Array<{ agent: string; task: string }> = [];
-      for (const seg of segments) {
-        const qMatch = seg.match(/^(\S+)\s+"([^"]*)"$/) ?? seg.match(/^(\S+)\s+'([^']*)'$/);
-        if (qMatch) {
-          tasks.push({ agent: qMatch[1], task: qMatch[2] });
-        }
-      }
-      if (tasks.length === 0) {
-        ctx.ui.notify('Usage: /parallel agent1 "task1" -> agent2 "task2"', "error");
-        return;
-      }
-      pi.sendUserMessage(
-        `Call the thread tool with these exact parameters: ${JSON.stringify({ tasks, agentScope: "both" })}`,
       );
     },
   });
