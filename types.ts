@@ -60,6 +60,14 @@ export interface RunResult {
   model?: string;
 }
 
+export interface LiveToolCall {
+  id?: string;
+  name: string;
+  args?: Record<string, unknown>;
+  summary?: string;
+  status: "running" | "success" | "error";
+}
+
 export interface ThreadRunResult {
   threadName?: string;          // undefined = ephemeral
   episode: Episode;
@@ -85,6 +93,8 @@ export interface ToolDetails {
   destroyedThread?: string;         // destroy mode
   running?: boolean;                // true while thread subprocess is executing
   outputTail?: string[];            // last N lines of live output for in-progress display
+  liveToolCalls?: LiveToolCall[];   // tool-call timeline while a subagent is running
+  activityLabel?: string;           // which thread/task/step produced the live update
 }
 
 // ─── Agents ──────────────────────────────────────────────────────────────────

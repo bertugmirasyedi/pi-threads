@@ -29,7 +29,6 @@ import {
 import { renderCall, renderResult } from "./render.js";
 import {
   getFinalOutput,
-  mapConcurrent,
   isThreadDepthBlocked,
   getThreadDepth,
   cleanupDir,
@@ -195,7 +194,15 @@ MODES:
             ephemeral: !stepThreadName,
             modelOverride: step.model ?? params.model,
             onUpdate: onUpdate
-              ? (p) => onUpdate({ ...p, details: { mode: "chain", results: chainResults } as ToolDetails })
+              ? (p) => onUpdate({
+                  ...p,
+                  details: {
+                    ...p.details,
+                    mode: "chain",
+                    results: chainResults,
+                    activityLabel: stepThreadName ?? `step ${i + 1}`,
+                  } as ToolDetails,
+                })
               : undefined,
           });
 
@@ -304,7 +311,14 @@ MODES:
           seedFile: seedFileResult?.filePath,
           modelOverride: params.model,
           onUpdate: onUpdate
-            ? (p) => onUpdate({ ...p, details: { ...p.details, mode: isNamed ? "thread" : "ephemeral" } as ToolDetails })
+            ? (p) => onUpdate({
+                ...p,
+                details: {
+                  ...p.details,
+                  mode: isNamed ? "thread" : "ephemeral",
+                  activityLabel: params.name ?? "ephemeral",
+                } as ToolDetails,
+              })
             : undefined,
         });
 

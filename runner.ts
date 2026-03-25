@@ -8,7 +8,7 @@
 import { spawn } from "node:child_process";
 import * as fs from "node:fs";
 import * as path from "node:path";
-import type { AgentConfig, RunOptions, RunResult } from "./types.js";
+import type { AgentConfig, LiveToolCall, RunOptions, RunResult } from "./types.js";
 import {
   getFinalOutput,
   getPiSpawnCommand,
@@ -20,6 +20,55 @@ import {
 } from "./utils.js";
 
 const TASK_ARG_LIMIT = 8000;
+const LIVE_TOOL_LIMIT = 8;
+
+function formatArgValue(value: unknown): string {
+  if (value === null || value === undefined) return "";
+  if (typeof value === "string") return value.length > 48 ? `${value.slice(0, 47)}…` : value;
+  if (typeof value === "number" || typeof value === "boolean") return String(value);
+  if (Array.isArray(value)) {
+    const items = value.slice(0, 2).map(formatArgValue).filter(Boolean);
+    const suffix = value.length > 2 ? ", …" : "";
+    return items.length > 0 ? items.join(", ") + suffix : `[${value.length} items]`;
+  }
+  if (typeof value === "object") {
+    const entries = Object.entries(value as Record<string, unknown>).slice(0, 2);
+    if (entries.length === 0) return "{}";
+    return entries.map(([k, v]) => `${k}:${formatArgValue(v)}`).join(", ");
+  }
+  return String(value);
+}
+
+function summarizeToolArgs(args: Record<string, unknown> | undefined): string | undefined {
+  if (!args || Object.keys(args).length === 0) return undefined;
+
+  const preferredKeys = [
+    "path", "file", "command", "query", "pattern", "url", "urls",
+    "name", "id", "task", "action", "prompt", "timestamp", "input",
+  ];
+
+  const selected: Array<[string, unknown]> = [];
+  for (const key of preferredKeys) {
+    if (key in args) selected.push([key, args[key]]);
+    if (selected.length >= 2) break;
+  }
+  if (selected.length === 0) {
+    selected.push(...Object.entries(args).slice(0, 2));
+  }
+
+  const parts = selected
+    .map(([, value]) => formatArgValue(value))
+    .filter(Boolean);
+  if (parts.length === 0) return undefined;
+  return parts.join(" · ");
+}
+
+function pushLiveToolCall(liveToolCalls: LiveToolCall[], call: LiveToolCall): void {
+  liveToolCalls.push(call);
+  if (liveToolCalls.length > LIVE_TOOL_LIMIT) {
+    liveToolCalls.splice(0, liveToolCalls.length - LIVE_TOOL_LIMIT);
+  }
+}
 
 // ─── Core runner ──────────────────────────────────────────────────────────────
 
@@ -151,7 +200,8 @@ export async function runThreadAction(
       const UPDATE_THROTTLE = 60;
       const TAIL_LINES = 16;
       const tailLines: string[] = [];
-      let currentTool = "";
+      const liveToolCalls: LiveToolCall[] = [];
+      const liveToolCallsById = new Map<string, LiveToolCall>();
 
       const appendToTail = (text: string) => {
         const lines = text.split("\n").map((l) => l.trim()).filter(Boolean);
@@ -171,8 +221,8 @@ export async function runThreadAction(
               results: [],
               running: true,
               outputTail: [...tailLines],
-              currentTool,
-            } as any,
+              liveToolCalls: liveToolCalls.map((call) => ({ ...call })),
+            },
           });
         }
       };
@@ -183,25 +233,46 @@ export async function runThreadAction(
           const evt = JSON.parse(line) as {
             type?: string;
             message?: any;
-            name?: string;
-            tool?: string;
             toolCallId?: string;
+            toolName?: string;
+            args?: Record<string, unknown>;
+            isError?: boolean;
           };
 
-          // Track tool calls as they start — gives live activity feedback
-          if (evt.type === "tool_execution_start" || evt.type === "tool_call") {
-            const toolName = (evt as any).toolName ?? evt.name ?? (evt as any).tool ?? "tool";
-            currentTool = toolName;
-            appendToTail(`→ ${toolName}`);
+          if (evt.type === "tool_execution_start") {
+            const toolName = evt.toolName ?? "tool";
+            const toolCall: LiveToolCall = {
+              id: evt.toolCallId,
+              name: toolName,
+              args: evt.args,
+              summary: summarizeToolArgs(evt.args),
+              status: "running",
+            };
+            pushLiveToolCall(liveToolCalls, toolCall);
+            if (evt.toolCallId) liveToolCallsById.set(evt.toolCallId, toolCall);
+            appendToTail(`→ ${toolName}${toolCall.summary ? ` ${toolCall.summary}` : ""}`);
             scheduleUpdate();
           }
 
-          // Track tool results for richer context
-          if (evt.type === "tool_result_end" || evt.type === "tool_execution_end") {
-            if (evt.message) {
-              result.messages.push(evt.message);
+          if (evt.type === "tool_execution_end") {
+            const existing = evt.toolCallId ? liveToolCallsById.get(evt.toolCallId) : undefined;
+            if (existing) {
+              existing.status = evt.isError ? "error" : "success";
+            } else {
+              pushLiveToolCall(liveToolCalls, {
+                id: evt.toolCallId,
+                name: evt.toolName ?? "tool",
+                args: evt.args,
+                summary: summarizeToolArgs(evt.args),
+                status: evt.isError ? "error" : "success",
+              });
             }
-            currentTool = "";
+            if (evt.toolCallId) liveToolCallsById.delete(evt.toolCallId);
+            scheduleUpdate();
+          }
+
+          if (evt.type === "tool_result_end" && evt.message) {
+            result.messages.push(evt.message);
             scheduleUpdate();
           }
 
@@ -219,24 +290,13 @@ export async function runThreadAction(
               }
               if (!result.model && evt.message.model) result.model = evt.message.model;
               if (evt.message.errorMessage) result.error = evt.message.errorMessage;
-              // Capture tool call names from assistant content for activity log
               for (const part of evt.message.content ?? []) {
                 if (part?.type === "text" && part.text) {
                   appendToTail(part.text);
-                } else if (part?.type === "toolCall" || part?.type === "tool_use") {
+                } else if (part?.type === "toolCall") {
                   const name = part.name ?? "tool";
-                  const args = part.arguments ?? part.input ?? {};
-                  // Build a concise activity line from tool name + key arg
-                  let detail = "";
-                  if (name === "read" && args.path) detail = ` ${args.path}`;
-                  else if (name === "bash" && args.command) detail = ` ${String(args.command).slice(0, 60)}`;
-                  else if (name === "edit" && args.path) detail = ` ${args.path}`;
-                  else if (name === "write" && args.path) detail = ` ${args.path}`;
-                  else if (name === "grep" && args.pattern) detail = ` "${args.pattern}"`;
-                  else if (name === "find" && args.pattern) detail = ` ${args.pattern}`;
-                  else if (name === "lsp" && args.action) detail = ` ${args.action}${args.file ? " " + args.file : ""}`;
-                  else if (name === "thread" && args.name) detail = ` ${args.name}`;
-                  appendToTail(`→ ${name}${detail}`);
+                  const args = part.arguments as Record<string, unknown> | undefined;
+                  appendToTail(`→ ${name}${summarizeToolArgs(args) ? ` ${summarizeToolArgs(args)}` : ""}`);
                 }
               }
               scheduleUpdate();
